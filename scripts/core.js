@@ -344,12 +344,12 @@ async function theEnd() {
 async function search_for_binaries() {
     version = (await input("What version of Minecraft are you wanting to use?: ")).split('.');
     const ENV_PATH = process.env.PATH.split(';');
-    if(!ENV_PATH.find(a => a.includes('Java\\javapath'))) {
+    if(!ENV_PATH.find(a => a.includes('Java\\jdk') || a.includes('Java\\jre'))) {
         console.error(`>> ERROR : Java is not detected in your system PATH! <<`)
         process.exit(1);
     } else {
         console.log(`Java detected.`);
-        java = ENV_PATH.filter(a => a.includes('Java\\javapath'))[0];
+        java = ENV_PATH.filter(a => a.includes('Java\\jdk') || a.includes('Java\\jre'))[0];
 
         download_mcp();
     }
