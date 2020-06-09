@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # MCP-Modificator
 This is a tool that will help modify the [Mod Coder Pack](http://modcoderpack.com) for newer versions of Minecraft.<br>
 
@@ -28,7 +27,6 @@ There may be some little bugs that I may have missed, so if you know how to use 
 - You can now run the Gradle stuff and rerun the code to properly get the patches working.
 - Reworked the code to now hopefully work for MacOS X and Linux.
 - MCP-Modificator now downloads ForgeFlower 1.5.380.40 for Minecraft 1.15.2.
-=======
 # MCP-Modificator
 This is a tool that will help modify the [Mod Coder Pack](http://modcoderpack.com) for newer versions of Minecraft.<br>
 
@@ -58,5 +56,4 @@ There may be some little bugs that I may have missed, so if you know how to use 
 - You can now run the Gradle stuff and rerun the code to properly get the patches working.
 - Reworked the code to now hopefully work for MacOS X and Linux.
 - MCP-Modificator now downloads ForgeFlower 1.5.380.40 for Minecraft 1.15.2.
->>>>>>> 248b6f649bdb1e9e30b07b568763442074a5152a
 - MCPConfig now gets redownloaded every time you use a different version of Minecraft.
