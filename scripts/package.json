@@ -1,6 +1,6 @@
 {
   "name": "mcp-modificator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A tool that helps build MCP for newer versions of Minecraft.",
   "main": "core.js",
   "scripts": {
@@ -10,7 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^0.19.2",
-    "fs-extra": "^8.1.0",
-    "yauzl": "^2.10.0"
+    "htmlparser2": "^4.1.0"
   }
 }

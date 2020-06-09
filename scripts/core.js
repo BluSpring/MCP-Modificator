@@ -1,11 +1,10 @@
 const fs = require('fs');
-const fse = require('fs-extra')
 const axios = require('axios');
 const child_process = require('child_process');
 const path = require('path');
 const os = require('os');
-const promisify = require('util').promisify;
 const readline = require('readline');
+const htmlparser = require('htmlparser2');
 async function input(logToConsole) {
     return new Promise((resolve) => {
         const rl = readline.createInterface(process.stdin, process.stdout);
@@ -56,11 +55,6 @@ const deleteFolderRecursive = async function(pathh) {
     }
 };
 
-if(os.release().split('.')[0] !== '10') {
-    console.error(`This script requires Windows 10 to be used!`);
-    process.exit(1);
-}
-
 console.log(`-=-=-=-=-=-=-=-=-=-=-`);
 console.log(`   MCP Modificator`);
 console.log(`-=-=-=-=-=-=-=-=-=-=-`);
@@ -79,11 +73,19 @@ async function download_mcp() {
         writer.on('close', async () => {
             console.log(`>>> MCP downloaded! Took ${Date.now() - curtime}ms. Unzipping... <<<`);
             //const unzipper = child_process.exec(`${path.resolve(path.join(__dirname, '../unzip.ps1'))} ${path.resolve(path.join(__dirname, '../lib/mcp'))} ${path.resolve(path.join(__dirname, '../temp/mcp.zip'))}`);
-            const unzipper = child_process.spawn(`powershell.exe`, [`-File`, `./unzip.ps1`, `./lib/mcp`, `./temp/mcp.zip`]);
-
-            unzipper.on('exit', (code, signal) => {
+            let unzipper;
+            
+            if (os.platform() == 'win32')
+                unzipper = child_process.spawn(`powershell.exe`, [`-File`, `./unzip.ps1`, `./lib/mcp`, `./temp/mcp.zip`]);
+            else
+                unzipper = child_process.spawn(`unzip`, [`./temp/mcp.zip`, `-d`, `./lib/mcp`]);
+            unzipper.on('exit', (code) => {
                 if(code == 1) {
-                    console.error(`Unzipping failed! You may have PowerShell's execution policy set to "Restricted"!\nTo fix this, open PowerShell as an administrator, then run "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine".\nAfter you're done with MCP-Modificator, run "Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope LocalMachine" to bring it back to its original state.`);
+                    if (os.platform() == 'win32')
+                        console.error(`Unzipping failed! You may have PowerShell's execution policy set to "Restricted"!\nTo fix this, open PowerShell as an administrator, then run "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine".\nAfter you're done with MCP-Modificator, run "Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope LocalMachine" to bring it back to its original state.`);
+                    else
+                        console.error(`Unzipping failed! Check the logs for more info.`);
+                        
                     process.exit(1);
                 }
                 console.log(`Finished unzipping and downloading MCP. Took ${Date.now() - curtime}ms`);
@@ -100,44 +102,51 @@ async function download_mcp() {
 }
 
 async function download_mcpconfig() {
-    if(!fs.existsSync(path.resolve(path.join(__dirname, '../lib/mcpconfig')))) {
-        let writer = fs.createWriteStream(path.resolve(path.join('./temp/mcpconfig.zip')));
-        console.log(`>>> MCPConfig not detected! Downloading... <<<`);
-        curtime = Date.now();
-        const res = await axios.get(`https://github.com/MinecraftForge/MCPConfig/archive/master.zip`, {responseType: 'stream'});
-        res.data.pipe(writer);
-        
-        writer.on('close', async () => {
-            console.log(`>>> MCPConfig downloaded! Took ${Date.now()-curtime}ms. Unzipping... <<<`);
-            //const unzipper = child_process.exec(`${path.resolve(path.join(__dirname, '../unzip.ps1'))} ${path.resolve(path.join(__dirname, '../lib/mcpconfig'))} ${path.resolve(path.join(__dirname, '../temp/mcpconfig.zip'))}`);
-            const unzipper = child_process.spawn(`powershell.exe`, [`-File`, `./unzip.ps1`, `./lib/mcpconfig`, `./temp/mcpconfig.zip`]);
-
-            unzipper.on('exit', (code, signal) => {
-                if(code == 1) {
-                    console.error(`Unzipping failed! You may have PowerShell's execution policy set to "Restricted"!\nTo fix this, open PowerShell as an administrator, then run "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine".\nAfter you're done with MCP-Modificator, run "Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope LocalMachine" to bring it back to its original state.`);
-                    process.exit(1);
-                }
-                console.log(`Finished unzipping and downloading MCPConfig. Took ${Date.now() - curtime}ms.`);
-                run_gradle();
-            });
-            unzipper.stderr.on('data', data => {console.error(`Err - ${data}`)});
-            unzipper.stdin.end();
-        });
-    } else {
-        console.log(`MCPConfig detected.`);
-        console.warn(`WARNING :: MCPConfig may be outdated, if that is the case please delete the "lib/mcpconfig" folder and rerun this script!`);
-        run_gradle();
+    if (fs.existsSync(path.resolve(path.join(__dirname, '../lib/mcpconfig'))) && fs.existsSync(path.resolve(path.join(__dirname, `../lib/mcpconfig/MCPConfig-master/build/versions/${version.join('.')}`)))) {
+        return move_files();
     }
+    let writer = fs.createWriteStream(path.resolve(path.join('./temp/mcpconfig.zip')));
+    console.log(`>>> Downloading MCPConfig... <<<`);
+    curtime = Date.now();
+    const res = await axios.get(`https://github.com/MinecraftForge/MCPConfig/archive/master.zip`, {responseType: 'stream'});
+    res.data.pipe(writer);
+        
+    writer.on('close', async () => {
+        console.log(`>>> MCPConfig downloaded! Took ${Date.now()-curtime}ms. Unzipping... <<<`);
+        //const unzipper = child_process.exec(`${path.resolve(path.join(__dirname, '../unzip.ps1'))} ${path.resolve(path.join(__dirname, '../lib/mcpconfig'))} ${path.resolve(path.join(__dirname, '../temp/mcpconfig.zip'))}`);
+        let unzipper;
+        
+        if (os.platform() == 'win32')
+            unzipper = child_process.spawn(`powershell.exe`, [`-File`, `./unzip.ps1`, `./lib/mcpconfig`, `./temp/mcpconfig.zip`]);
+        else
+            unzipper = child_process.spawn(`unzip`, [`./temp/mcpconfig.zip`, `-d`, `./lib/mcpconfig`]);
+        unzipper.on('exit', (code) => {
+            if(code == 1) {
+                if (os.platform() == 'win32')
+                    console.error(`Unzipping failed! You may have PowerShell's execution policy set to "Restricted"!\nTo fix this, open PowerShell as an administrator, then run "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine".\nAfter you're done with MCP-Modificator, run "Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope LocalMachine" to bring it back to its original state.`);
+                else
+                    console.error(`Unzipping failed! Check the logs for more info.`);
+                
+                process.exit(1);
+            }
+            console.log(`Finished unzipping and downloading MCPConfig. Took ${Date.now() - curtime}ms.`);
+            run_gradle();
+        });
+        unzipper.stderr.on('data', data => {console.error(`Err - ${data}`)});
+        unzipper.stdin.end();
+    });
 }
 
 async function run_gradle() {
     if(fs.existsSync(path.resolve(path.join(__dirname, `../lib/mcpconfig/MCPConfig-master/build/versions/${version.join('.')}`))))
         return move_files();
+
+    console.log(`"${path.resolve(path.join(__dirname, `../lib/mcpconfig/MCPConfig-master/${os.platform() == 'win32' ? 'gradlew.bat' : 'gradlew'}`))}" :${version.join('.')}:projectClientApplyPatches`)
     console.log(`>>> Running Gradle for version ${version.join('.')}. This may take a while. <<<`);
-    const gradlew = child_process.exec(`"${path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/gradlew.bat'))}" :${version.join('.')}:projectClientApplyPatches`);
+    const gradlew = child_process.exec(`"${path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/gradlew'))}" :${version.join('.')}:projectClientApplyPatches`);
     gradlew.on('exit', (code) => {
         if(code == 1) {
-            console.error(`Gradle failed! Unsure what the cause is at the moment.\nIf need be, open "lib/mcpconfig/MCPConfig-master" in command prompt or Windows Powershell, and run "gradlew :${version.join('.')}:projectClientApplyPatches".`);
+            console.error(`Gradle failed! Unsure what the cause is at the moment.\nIf need be, open "lib/mcpconfig/MCPConfig-master" in command prompt or Windows Powershell, and run "gradlew :${version.join('.')}:projectClientApplyPatches".\nAfter you're done, rerun the script and see what happens.`);
             process.exit(1);
         }
         move_files();
@@ -153,10 +162,21 @@ async function run_gradle() {
 
 async function move_files() {
     console.log(`>>> Copying and downloading MCP-required stuff... <<<`);
-    fs.copyFileSync(readdirRecursive(path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/build/libraries/net/minecraftforge/forgeflower')))[0], path.resolve(path.join(__dirname, '../lib/mcp/runtime/bin/fernflower.jar')));
+    if (version[0] == '1' && version[1] == '15' && version[2] == '2') {
+        let writer = fs.createWriteStream(path.resolve(path.join('./lib/mcp/runtime/bin/fernflower.jar')));
+        console.log(`>>> Downloading ForgeFlower 1.5.380.40... <<<`);
+        const res = await axios.get(`http://files.minecraftforge.net/maven/net/minecraftforge/forgeflower/1.5.380.40/forgeflower-1.5.380.40.jar`, {responseType: 'stream'});
+
+        res.data.pipe(writer);
+
+        writer.on('close', async () => {
+            console.log(`Finished downloading ForgeFlower.`);
+        });
+    } else
+        fs.copyFileSync(readdirRecursive(path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/build/libraries/net/minecraftforge/forgeflower')))[0], path.resolve(path.join(__dirname, '../lib/mcp/runtime/bin/fernflower.jar')));
     fs.copyFileSync(readdirRecursive(path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/build/libraries/de/oceanlabs/mcp/mcinjector')))[0], path.resolve(path.join(__dirname, '../lib/mcp/runtime/bin/mcinjector.jar')));
     fs.copyFileSync(readdirRecursive(path.resolve(path.join(__dirname, '../lib/mcpconfig/MCPConfig-master/build/libraries/net/md-5/SpecialSource')))[0], path.resolve(path.join(__dirname, '../lib/mcp/runtime/bin/specialsource.jar')));
-    axios.get('http://export.mcpbot.bspk.rs/fields.csv', {responseType: 'stream'})
+    /*axios.get('http://export.mcpbot.bspk.rs/fields.csv', {responseType: 'stream'})
     .then(res => {
         console.log(`Downloading fields.csv...`);
         res.data.pipe(fs.createWriteStream(path.resolve(path.join(__dirname, '../lib/mcp/conf/fields.csv'))));
@@ -170,6 +190,159 @@ async function move_files() {
     .then(res => {
         console.log(`Downloading params.csv...`);
         res.data.pipe(fs.createWriteStream(path.resolve(path.join(__dirname, '../lib/mcp/conf/params.csv'))));
+    });*/
+
+    let ent = false;
+    let inDl = false;
+    let latestVersion = null;
+
+    var parser = new htmlparser.Parser({
+        onopentag: function(name, attribs){
+            if (name == 'tr') {
+                ent = true;
+            }
+    
+            if (name == 'td' && ent) {
+                if (attribs.class == 'name') {
+                    inDl = true;
+                }
+            }
+        },
+        ontext: async function(text){
+            if (ent && inDl && !latestVersion) {
+                console.log(`Found MCP mappings version - ${text}`);
+                latestVersion = text;
+            }
+
+            if (text.includes(`No files are available`)) {
+                console.error(`Failed getting mappings for version ${version.join('.')}! Searching again for slightly lower patch versions...`);
+
+                if (!version[2]) {
+                    console.error(`The version you entered seems to be latest! You won't be able to fix MCP at this point in time. Try again later.`);
+                    return process.exit(1)
+                } else {
+                    let newVer = Array.from(version);
+
+                    if (newVer[2] == '1') {
+                        newVer = newVer.splice(0,2);
+                    } else {
+                        newVer[2] = (parseInt(newVer[2]) - 1).toString();
+                    }
+                    
+                    try {
+                        const ress = await axios.get(`http://export.mcpbot.bspk.rs/snapshot/${newVer.join('.')}`);
+                        parser.write(ress.data);
+                        parser.end();
+                    } catch (_) {
+                        console.error(`Could not find a close mapping! Try again later.`);
+
+                        process.exit(1);
+                    }
+                }
+            }
+        }, 
+        onclosetag: function (name) {
+            if (name == 'tr') {
+                ent = false;
+            }
+    
+            if (name == 'td' && inDl && ent) {
+                inDl = false;
+            }
+        }
+    }, {decodeEntities: true});
+
+    parser.onend = async () => {
+        try {
+            if (!latestVersion) return;
+            var mappings = fs.createWriteStream(path.resolve(path.join(__dirname, '../temp/mappings.zip')));
+            let curtime = Date.now();
+            const reso = await axios.get(`http://export.mcpbot.bspk.rs/mcp_snapshot/${latestVersion.slice(13).split('').reverse().slice(4).reverse().join('')}/${latestVersion}`, {responseType: 'stream'});
+            console.log(`Downloading MCP mappings...`);
+            reso.data.pipe(mappings);
+
+            mappings.on('close', async () => {
+                mappings.close();
+                mappings.end();
+                mappings.destroy();
+                console.log(`Unzipping MCP mappings...`);
+                /**
+                 * @type {NodeJS.Process}
+                 */
+                let unzipper;
+                setTimeout(() => {
+                    if (os.platform() == 'win32')
+                        unzipper = child_process.spawn(`powershell.exe`, [`-File`, `unzip.ps1`, `lib\\mappings`, `temp\\mappings.zip`]);
+                    else
+                        unzipper = child_process.spawn(`unzip`, [`./temp/mappings.zip`, `-d`, `./lib/mappings`]);
+                    unzipper.on('exit', (code) => {
+                        if(unzipper.stderr.bytesRead >= 10) {
+                            if (os.platform() == 'win32') {
+                                console.error(`Unzipping failed! You may have PowerShell's execution policy set to "Restricted"!\nTo fix this, open PowerShell as an administrator, then run "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine".\nAfter you're done with MCP-Modificator, run "Set-ExecutionPolicy -ExecutionPolicy Restricted -Scope LocalMachine" to bring it back to its original state.\n\n`);
+                                console.error(`If that is not the case, please check the logs for more info.`);
+                            } else
+                                console.error(`Unzipping failed! Check the logs for more info.`);
+                            
+                            process.exit(1);
+                        }
+                        console.log(`Finished unzipping and downloading MCP mappings. Took ${Date.now() - curtime}ms.`);
+                        
+                        fs.copyFileSync(path.resolve(path.join(__dirname, `../lib/mappings/fields.csv`)), path.resolve(path.join(__dirname, `../lib/mcp/conf/fields.csv`)));
+                        fs.copyFileSync(path.resolve(path.join(__dirname, `../lib/mappings/methods.csv`)), path.resolve(path.join(__dirname, `../lib/mcp/conf/methods.csv`)));
+                        fs.copyFileSync(path.resolve(path.join(__dirname, `../lib/mappings/params.csv`)), path.resolve(path.join(__dirname, `../lib/mcp/conf/params.csv`)));
+
+                        run_fixer();
+                    });
+
+                    unzipper.stderr.on('data', data => {console.error(`Err - ${data}`);});
+                    unzipper.stdin.end();
+                }, 2000);
+            });
+        } catch (e) {
+            console.error(`Failed to download the mappings! Error: ${e.stack}`);
+        }
+    }
+    
+    axios.get('http://export.mcpbot.bspk.rs/snapshot/').then(async res => {
+        if (res.status == 200) {
+            try {
+                console.log(`Getting mappings...`);
+                const ress = await axios.get(`http://export.mcpbot.bspk.rs/snapshot/${version.join('.')}`);
+                parser.write(ress.data);
+                parser.end();
+            } catch (_) {
+                console.error(`Failed getting mappings for version ${version.join('.')}! Searching again for slightly lower patch versions...`);
+
+                if (!version[2]) {
+                    console.error(`The version you entered seems to be latest! You won't be able to fix MCP at this point in time. Try again later.`);
+                    return process.exit(1)
+                } else {
+                    let newVer = Array.from(version);
+
+                    if (newVer[2] == '1') {
+                        newVer = newVer.splice(0,2);
+                    } else {
+                        newVer[2] = (parseInt(newVer[2]) - 1).toString();
+                    }
+                    
+                    try {
+                        const ress = await axios.get(`http://export.mcpbot.bspk.rs/snapshot/${newVer.join('.')}`);
+                        parser.write(ress.data);
+                        parser.end();
+                    } catch (_) {
+                        console.error(`Could not find a close mapping! Try again later.`);
+
+                        process.exit(1);
+                    }
+                }
+            }
+        } else {
+            console.error(`Error - MCPbot is offline!`);
+
+            process.exit(1);
+        }
+    }).catch(e => {
+        console.error(`An error occurred whilst trying to get the mappings:\n${e.stack}`);
     });
     try {
         await deleteFolderRecursive(path.resolve(path.join(__dirname, '../lib/mcp/conf/patches')));
@@ -312,7 +485,6 @@ ClientVersion = ${version.join('.')}
 ServerVersion = ${version.join('.')}
     `);
     console.log(`Finished copying and modifying files!`);
-    run_fixer();
 }
 
 async function run_fixer() {
@@ -344,12 +516,12 @@ async function theEnd() {
 async function search_for_binaries() {
     version = (await input("What version of Minecraft are you wanting to use?: ")).split('.');
     const ENV_PATH = process.env.PATH.split(';');
-    if(!ENV_PATH.find(a => a.includes('Java\\javapath'))) {
+    if(!ENV_PATH.find(a => a.includes('Java\\jdk') || a.includes('Java\\jre'))) {
         console.error(`>> ERROR : Java is not detected in your system PATH! <<`)
         process.exit(1);
     } else {
         console.log(`Java detected.`);
-        java = ENV_PATH.filter(a => a.includes('Java\\javapath'))[0];
+        java = ENV_PATH.filter(a => a.includes('Java\\jdk') || a.includes('Java\\jre'))[0];
 
         download_mcp();
     }
